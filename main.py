@@ -66,29 +66,34 @@ class Database:
     async def connect(self):
         """Подключение к базе данных"""
         try:
-            if self.pool: # Защита от повторного вызова
-                return
-            
-            logger.info("Попытка создать пул соединений...")
+            # Если пул уже существует, закрываем его перед пересозданием
+            if self.pool:
+                await self.pool.close()
+
+            logger.info("Попытка подключения к БД...")
             self.pool = await asyncpg.create_pool(
                 DB_URL,
-                min_size=1,  # Уменьшили с 5 до 1
-                max_size=10, # Оставили запас
-                command_timeout=60
+                min_size=1,   # Минимально 1 соединение (хватит для бота)
+                max_size=5,   # Максимально 5
+                command_timeout=60,
+                # Помогаем asyncpg договориться с Supabase
+                server_settings={
+                    "application_name": "tg_bot",
+                }
             )
             
-            # Проверка, что пул создался
-            if not self.pool:
-                raise Exception("Пул не был создан")
+            # Проверяем, что пул действительно создался
+            if self.pool is None:
+                raise Exception("Пул соединений не был создан (None)")
 
             await self.create_tables()
             await self.initialize_default_data()
-            logger.info("База данных подключена и инициализирована")
+            logger.info("База данных успешно подключена и инициализирована")
         except Exception as e:
             logger.error(f"КРИТИЧЕСКАЯ ОШИБКА БД: {e}")
-            self.pool = None # Важно, чтобы при ошибке оставался None
-            raise e # Пробрасываем ошибку выше, чтобы бот не запускался со сломанной базой
-    
+            self.pool = None
+            raise e
+        
     async def create_tables(self):
         """Создание всех таблиц"""
         async with self.pool.acquire() as conn:
@@ -4214,23 +4219,18 @@ async def on_startup(dp):
     try:
         # 1. СНАЧАЛА подключаем базу данных
         await db.connect()
-        logger.info("База данных успешно подключена")
-
-        # 2. ПОТОМ запускаем веб-сервер и планировщик
+        
+        # 2. ПОТОМ всё остальное
         asyncio.create_task(start_web_server()) 
         asyncio.create_task(schedule_tasks())
         
         logger.info("Бот запущен и готов к работе")
         
-        # Уведомление админам
-        for admin_id in ADMIN_IDS:
-            try:
-                await bot.send_message(admin_id, "🤖 Бот запущен и готов к работе!")
-            except:
-                pass
-                
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
+        # Не даем боту запуститься, если база не подключена
+        import sys
+        sys.exit(1)
 
 async def on_shutdown(dp):
     """Действия при выключении бота"""
