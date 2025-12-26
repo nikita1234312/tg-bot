@@ -4202,16 +4202,17 @@ async def schedule_tasks():
 async def on_startup(dp):
     """Действия при запуске бота"""
     try:
-        # ЗАПУСК ВЕБ-СЕРВЕРА ДЛЯ RENDER (добавьте эту строку)
-        asyncio.create_task(start_web_server()) 
-        
+        # 1. СНАЧАЛА подключаем базу данных
         await db.connect()
-        logger.info("Бот запущен и подключен к базе данных")
-        
-        # Запускаем планировщик задач в фоне
+        logger.info("База данных успешно подключена")
+
+        # 2. ПОТОМ запускаем веб-сервер и планировщик
+        asyncio.create_task(start_web_server()) 
         asyncio.create_task(schedule_tasks())
         
-        # Отправляем уведомление админам
+        logger.info("Бот запущен и готов к работе")
+        
+        # Уведомление админам
         for admin_id in ADMIN_IDS:
             try:
                 await bot.send_message(admin_id, "🤖 Бот запущен и готов к работе!")
