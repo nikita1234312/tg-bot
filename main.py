@@ -66,18 +66,28 @@ class Database:
     async def connect(self):
         """Подключение к базе данных"""
         try:
+            if self.pool: # Защита от повторного вызова
+                return
+            
+            logger.info("Попытка создать пул соединений...")
             self.pool = await asyncpg.create_pool(
                 DB_URL,
-                min_size=5,
-                max_size=20,
+                min_size=1,  # Уменьшили с 5 до 1
+                max_size=10, # Оставили запас
                 command_timeout=60
             )
+            
+            # Проверка, что пул создался
+            if not self.pool:
+                raise Exception("Пул не был создан")
+
             await self.create_tables()
             await self.initialize_default_data()
             logger.info("База данных подключена и инициализирована")
         except Exception as e:
-            logger.error(f"Ошибка подключения к БД: {e}")
-            raise
+            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА БД: {e}")
+            self.pool = None # Важно, чтобы при ошибке оставался None
+            raise e # Пробрасываем ошибку выше, чтобы бот не запускался со сломанной базой
     
     async def create_tables(self):
         """Создание всех таблиц"""
