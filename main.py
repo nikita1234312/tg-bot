@@ -64,35 +64,42 @@ class Database:
         self.cache_timeout = 300  # 5 минут
     
     async def connect(self):
-        """Подключение к базе данных"""
+        """Установка соединения с базой данных"""
+        if self.pool:
+            return
+            
         try:
-            # Если пул уже существует, закрываем его перед пересозданием
-            if self.pool:
-                await self.pool.close()
+            # Получаем URL из переменной окружения
+            database_url = os.environ.get("DATABASE_URL")
+            
+            if not database_url:
+                logger.error("Переменная окружения DATABASE_URL не установлена!")
+                return
 
-            logger.info("Попытка подключения к БД...")
+            # Создаем пул соединений
             self.pool = await asyncpg.create_pool(
-                DB_URL,
-                min_size=1,   # Минимально 1 соединение (хватит для бота)
-                max_size=5,   # Максимально 5
+                database_url,
+                min_size=1,
+                max_size=5,
+                # ВАЖНО для Supabase: отключаем кэш стейтментов
+                statement_cache_size=0, 
                 command_timeout=60,
-                # Помогаем asyncpg договориться с Supabase
                 server_settings={
-                    "application_name": "tg_bot",
+                    "application_name": "tg_bot"
                 }
             )
+            logger.info("Соединение с базой данных Supabase установлено")
             
-            # Проверяем, что пул действительно создался
-            if self.pool is None:
-                raise Exception("Пул соединений не был создан (None)")
-
+            # Сразу пробуем создать таблицы, если их нет
             await self.create_tables()
-            await self.initialize_default_data()
-            logger.info("База данных успешно подключена и инициализирована")
+            
         except Exception as e:
-            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА БД: {e}")
+            logger.error(f"Ошибка при подключении к базе данных: {e}")
             self.pool = None
+            # Если база не подключилась, лучше остановить запуск, 
+            # чтобы не получать ошибки NoneType постоянно
             raise e
+        
         
     async def create_tables(self):
         """Создание всех таблиц"""
