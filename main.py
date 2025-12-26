@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any, Set
 from enum import Enum
 from decimal import Decimal
+from aiohttp import web
 
 import asyncpg
 from aiogram import Bot, Dispatcher, types
@@ -21,6 +22,22 @@ from aiogram.types import InputFile, ContentType, InputMediaPhoto
 from aiogram.utils.exceptions import BotBlocked, ChatNotFound
 from aiogram.utils.markdown import escape_md
 import aioschedule
+
+
+# --- Код для поддержки работоспособности на Render ---
+async def handle(request):
+    return web.Response(text="Bot is alive")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"Web server started on port {port}")
+# ---------------------------------------------------
 
 # ==================== КОНФИГУРАЦИЯ ====================
 logging.basicConfig(
@@ -4185,6 +4202,9 @@ async def schedule_tasks():
 async def on_startup(dp):
     """Действия при запуске бота"""
     try:
+        # ЗАПУСК ВЕБ-СЕРВЕРА ДЛЯ RENDER (добавьте эту строку)
+        asyncio.create_task(start_web_server()) 
+        
         await db.connect()
         logger.info("Бот запущен и подключен к базе данных")
         
@@ -4207,9 +4227,6 @@ async def on_shutdown(dp):
     logger.info("Бот выключен")
 
 if __name__ == '__main__':
-    executor.start_polling(
-        dp, 
-        skip_updates=True, 
-        on_startup=on_startup, 
-        on_shutdown=on_shutdown
-    )
+    loop = asyncio.get_event_loop()
+    loop.create_task(start_web_server())
+    executor.start_polling(dp, skip_updates=True)
